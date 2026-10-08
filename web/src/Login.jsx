@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { entrar } from "./auth";
 
-export default function Login({ onOk }) {
+export default function Login({ onOk, mensagem }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState("");
@@ -25,6 +25,7 @@ export default function Login({ onOk }) {
       <main className="flex flex-1 items-start justify-center px-4 py-8">
         <form onSubmit={enviar} className="w-full max-w-sm rounded border bg-white p-5">
           <h1 className="text-2xl font-normal">Fazer login</h1>
+          {mensagem ? <p className="mt-3 text-sm text-[#565959]">{mensagem}</p> : null}
           <label className="mt-4 block text-sm font-bold">
             E-mail
             <input

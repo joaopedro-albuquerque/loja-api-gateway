@@ -10,6 +10,7 @@ import {
   lerCarrinho,
   limparCarrinho,
   listarProdutos,
+  SessaoExpirada,
 } from "./api";
 import { ehAdmin, sair, token, usuarioNaTela } from "./auth";
 
@@ -21,6 +22,7 @@ export default function App() {
   const [carrinho, setCarrinho] = useState({ itens: [], total: 0 });
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
+  const [motivoLogin, setMotivoLogin] = useState("");
 
   async function carregar() {
     const [catalogo, sacola] = await Promise.all([listarProdutos(), lerCarrinho()]);
@@ -30,7 +32,7 @@ export default function App() {
 
   useEffect(() => {
     if (!logado) return;
-    carregar().catch((e) => setErro(e.message));
+    carregar().catch(tratarErro);
   }, [logado]);
 
   function sairDaConta() {
@@ -39,10 +41,29 @@ export default function App() {
     setPagina("inicio");
     setProdutos([]);
     setCarrinho({ itens: [], total: 0 });
+    setErro("");
+    setAviso("");
+  }
+
+  function tratarErro(e) {
+    if (e instanceof SessaoExpirada) {
+      sairDaConta();
+      setMotivoLogin(e.message);
+      return;
+    }
+    setErro(e.message);
   }
 
   if (!logado) {
-    return <Login onOk={() => setLogado(true)} />;
+    return (
+      <Login
+        mensagem={motivoLogin}
+        onOk={() => {
+          setMotivoLogin("");
+          setLogado(true);
+        }}
+      />
+    );
   }
 
   const admin = ehAdmin();
@@ -55,7 +76,7 @@ export default function App() {
       setCarrinho(await adicionarAoCarrinho(produto));
       setAviso(`${produto.nome} foi para o carrinho.`);
     } catch (e) {
-      setErro(e.message);
+      tratarErro(e);
     }
   }
 
@@ -65,7 +86,7 @@ export default function App() {
     try {
       setCarrinho(await limparCarrinho());
     } catch (e) {
-      setErro(e.message);
+      tratarErro(e);
     }
   }
 
@@ -79,7 +100,7 @@ export default function App() {
       setPagina("inicio");
       return true;
     } catch (e) {
-      setErro(e.message);
+      tratarErro(e);
       return false;
     }
   }
