@@ -1,0 +1,66 @@
+name: Backend
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "lambdas/**"
+      - "scripts/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  empacotar:
+    name: Empacotar
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gerar ZIPs
+        run: ./scripts/empacotar.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lambdas
+          path: dist/*.zip
+          if-no-files-found: error
+
+  deploy:
+    name: Publicar Lambdas
+    needs: empacotar
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: lambdas
+          path: dist
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Atualizar loja-produtos
+        run: |
+          aws lambda update-function-code \
+            --function-name loja-produtos \
+            --zip-file fileb://dist/loja-produtos.zip
+          aws lambda wait function-updated --function-name loja-produtos
+
+      - name: Atualizar loja-carrinho
+        run: |
+          aws lambda update-function-code \
+            --function-name loja-carrinho \
+            --zip-file fileb://dist/loja-carrinho.zip
+          aws lambda wait function-updated --function-name loja-carrinho
