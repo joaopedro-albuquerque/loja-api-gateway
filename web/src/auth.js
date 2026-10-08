@@ -1,6 +1,10 @@
 const CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID;
 const CHAVE = "loja_access_token";
+const CHAVE_REFRESH = "loja_refresh_token";
 const CHAVE_EMAIL = "loja_email";
+const MARGEM_SEGUNDOS = 60;
+
+let renovacaoEmAndamento = null;
 
 export function token() {
   return localStorage.getItem(CHAVE);
@@ -8,16 +12,21 @@ export function token() {
 
 export function sair() {
   localStorage.removeItem(CHAVE);
+  localStorage.removeItem(CHAVE_REFRESH);
   localStorage.removeItem(CHAVE_EMAIL);
 }
 
 function payload() {
   const atual = token();
   if (!atual) return {};
-  const parte = atual.split(".")[1];
-  const base64 = parte.replace(/-/g, "+").replace(/_/g, "/");
-  const pad = base64.length % 4 === 0 ? "" : "=".repeat(4 - (base64.length % 4));
-  return JSON.parse(atob(base64 + pad));
+  try {
+    const parte = atual.split(".")[1];
+    const base64 = parte.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = base64.length % 4 === 0 ? "" : "=".repeat(4 - (base64.length % 4));
+    return JSON.parse(atob(base64 + pad));
+  } catch {
+    return {};
+  }
 }
 
 export function usuarioNaTela() {
@@ -30,7 +39,13 @@ export function ehAdmin() {
   return lista.includes("admin");
 }
 
-export async function entrar(email, senha) {
+export function expirado() {
+  const { exp } = payload();
+  if (!exp) return true;
+  return Date.now() / 1000 >= exp - MARGEM_SEGUNDOS;
+}
+
+async function iniciarAuth(authFlow, authParameters) {
   const resposta = await fetch("https://cognito-idp.us-east-1.amazonaws.com/", {
     method: "POST",
     headers: {
@@ -38,18 +53,42 @@ export async function entrar(email, senha) {
       "X-Amz-Target": "AWSCognitoIdentityProviderService.InitiateAuth",
     },
     body: JSON.stringify({
-      AuthFlow: "USER_PASSWORD_AUTH",
+      AuthFlow: authFlow,
       ClientId: CLIENT_ID,
-      AuthParameters: {
-        USERNAME: email,
-        PASSWORD: senha,
-      },
+      AuthParameters: authParameters,
     }),
   });
   const dados = await resposta.json();
   if (!resposta.ok) {
-    throw new Error(dados.message || "Falha no login");
+    throw new Error(dados.message || "Falha na autenticação");
   }
-  localStorage.setItem(CHAVE, dados.AuthenticationResult.AccessToken);
+  return dados.AuthenticationResult;
+}
+
+export async function entrar(email, senha) {
+  const resultado = await iniciarAuth("USER_PASSWORD_AUTH", {
+    USERNAME: email,
+    PASSWORD: senha,
+  });
+  localStorage.setItem(CHAVE, resultado.AccessToken);
+  localStorage.setItem(CHAVE_REFRESH, resultado.RefreshToken);
   localStorage.setItem(CHAVE_EMAIL, email);
+}
+
+// Chamadas paralelas (ex.: produtos + carrinho) compartilham a mesma renovação.
+export function renovar() {
+  if (!renovacaoEmAndamento) {
+    renovacaoEmAndamento = (async () => {
+      const refresh = localStorage.getItem(CHAVE_REFRESH);
+      if (!refresh) throw new Error("Sem refresh token");
+      const resultado = await iniciarAuth("REFRESH_TOKEN_AUTH", { REFRESH_TOKEN: refresh });
+      localStorage.setItem(CHAVE, resultado.AccessToken);
+      if (resultado.RefreshToken) {
+        localStorage.setItem(CHAVE_REFRESH, resultado.RefreshToken);
+      }
+    })().finally(() => {
+      renovacaoEmAndamento = null;
+    });
+  }
+  return renovacaoEmAndamento;
 }
