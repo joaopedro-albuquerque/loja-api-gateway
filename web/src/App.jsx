@@ -6,6 +6,7 @@ import Login from "./Login";
 import Loja from "./Loja";
 import {
   adicionarAoCarrinho,
+  atualizarEstoque,
   criarProduto,
   lerCarrinho,
   limparCarrinho,
@@ -90,11 +91,11 @@ export default function App() {
     }
   }
 
-  async function incluir(nome, preco) {
+  async function incluir(nome, preco, estoque) {
     setErro("");
     setAviso("");
     try {
-      await criarProduto(nome, preco);
+      await criarProduto(nome, preco, estoque);
       await carregar();
       setAviso(`${nome} entrou no catálogo.`);
       setPagina("inicio");
@@ -102,6 +103,20 @@ export default function App() {
     } catch (e) {
       tratarErro(e);
       return false;
+    }
+  }
+
+  async function ajustarEstoque(produto, estoque) {
+    setErro("");
+    setAviso("");
+    try {
+      const atualizado = await atualizarEstoque(produto.id, estoque);
+      setProdutos((lista) =>
+        lista.map((atual) => (atual.id === atualizado.id ? atualizado : atual)),
+      );
+      setAviso(`Estoque de ${atualizado.nome} agora é ${atualizado.estoque}.`);
+    } catch (e) {
+      tratarErro(e);
     }
   }
 
@@ -119,7 +134,9 @@ export default function App() {
       />
     );
   } else if (pagina === "incluir" && admin) {
-    miolo = <Incluir onCriar={incluir} />;
+    miolo = (
+      <Incluir produtos={produtos} onCriar={incluir} onAjustarEstoque={ajustarEstoque} />
+    );
   } else if (pagina === "conta") {
     miolo = (
       <section className="rounded bg-white p-6">

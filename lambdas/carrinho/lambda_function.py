@@ -6,6 +6,8 @@ import boto3
 from boto3.dynamodb.conditions import Key
 
 tabela = boto3.resource("dynamodb").Table(os.environ["TABELA_CARRINHO"])
+# Leitura do catálogo só para conferir o estoque (permissão GetItem).
+tabela_produtos = boto3.resource("dynamodb").Table(os.environ["TABELA_PRODUTOS"])
 
 
 def _numero(valor):
@@ -78,12 +80,35 @@ def lambda_handler(event, context):
         produto_id = dados.get("produtoId")
         if produto_id is None:
             return _resposta(400, {"erro": "Campo obrigatório: produtoId"})
+        try:
+            chave_produto = int(str(produto_id))
+        except ValueError:
+            return _resposta(400, {"erro": "produtoId tem que ser numérico"})
+
+        try:
+            qtd = Decimal(str(dados.get("qtd", 1)))
+        except Exception:
+            return _resposta(400, {"erro": "qtd tem que ser numérica"})
+        if qtd % 1 != 0 or qtd < 1:
+            return _resposta(400, {"erro": "qtd tem que ser um inteiro maior que zero"})
+
+        produto = tabela_produtos.get_item(Key={"id": chave_produto}).get("Item")
+        if not produto:
+            return _resposta(404, {"erro": f"Produto {produto_id} não existe"})
+        disponivel = _numero(produto.get("estoque", 0))
+        if disponivel <= 0:
+            return _resposta(409, {"erro": f"{produto['nome']} está esgotado"})
+        if qtd > disponivel:
+            return _resposta(
+                409,
+                {"erro": f"Estoque insuficiente para {produto['nome']}: disponível {disponivel}"},
+            )
 
         tabela.put_item(
             Item={
                 "usuarioId": usuario,
                 "produtoId": str(produto_id),
-                "qtd": Decimal(str(dados.get("qtd", 1))),
+                "qtd": qtd,
                 "preco": Decimal(str(dados.get("preco", 0))),
             }
         )

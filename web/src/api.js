@@ -66,9 +66,16 @@ export function limparCarrinho() {
   return requisitar("/carrinho", { method: "DELETE" });
 }
 
-export function criarProduto(nome, preco) {
+export function criarProduto(nome, preco, estoque) {
   return requisitar("/produtos", {
     method: "POST",
-    body: JSON.stringify({ nome, preco: Number(preco) }),
+    body: JSON.stringify({ nome, preco: Number(preco), estoque: Number(estoque) }),
+  });
+}
+
+export function atualizarEstoque(id, estoque) {
+  return requisitar("/produtos", {
+    method: "PUT",
+    body: JSON.stringify({ id: Number(id), estoque: Number(estoque) }),
   });
 }

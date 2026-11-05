@@ -33,11 +33,17 @@ export default function Loja({ produtos, busca, onAdicionar }) {
                 </div>
                 <h3 className="line-clamp-2 text-sm">{produto.nome}</h3>
                 <p className="mt-1 text-lg font-medium">{reais(produto.preco)}</p>
+                {produto.estoque > 0 ? (
+                  <p className="text-xs text-[#067d62]">Em estoque: {produto.estoque}</p>
+                ) : (
+                  <p className="text-xs font-bold text-[#c40000]">Esgotado</p>
+                )}
                 <button
-                  className="mt-3 rounded-full bg-[#ffd814] px-3 py-1.5 text-sm hover:bg-[#f7ca00]"
+                  className="mt-3 rounded-full bg-[#ffd814] px-3 py-1.5 text-sm hover:bg-[#f7ca00] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[#ffd814]"
+                  disabled={!(produto.estoque > 0)}
                   onClick={() => onAdicionar(produto)}
                 >
-                  Adicionar ao carrinho
+                  {produto.estoque > 0 ? "Adicionar ao carrinho" : "Indisponível"}
                 </button>
               </article>
             ))}
