@@ -9,3 +9,7 @@ dist/
 evidencias/*.png
 evidencias/*.txt
 !evidencias/README.md
+
+README_TECNICO.md
+REGRAS_DE_NEGOCIO.md
+readme_de_negocio.md

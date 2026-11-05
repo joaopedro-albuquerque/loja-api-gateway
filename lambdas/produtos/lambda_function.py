@@ -53,9 +53,68 @@ def _listar():
             "id": _numero(item["id"]),
             "nome": item["nome"],
             "preco": _numero(item["preco"]),
+            # Produto gravado antes do controle de estoque conta como esgotado.
+            "estoque": _numero(item.get("estoque", 0)),
         }
         for item in itens
     ]
+
+
+def _corpo(event):
+    bruto = event.get("body") or "{}"
+    return json.loads(bruto) if isinstance(bruto, str) else bruto
+
+
+def _estoque(valor):
+    """Converte para inteiro >= 0 ou devolve None se o valor for inválido."""
+    if isinstance(valor, bool):
+        return None
+    try:
+        numero = Decimal(str(valor))
+    except Exception:
+        return None
+    if numero % 1 != 0 or numero < 0:
+        return None
+    return int(numero)
+
+
+def _atualizar_estoque(event):
+    try:
+        dados = _corpo(event)
+    except json.JSONDecodeError:
+        return _resposta(400, {"erro": "JSON inválido"})
+
+    try:
+        produto_id = int(str(dados.get("id")))
+    except (TypeError, ValueError):
+        return _resposta(400, {"erro": "Campo obrigatório: id numérico"})
+
+    estoque = _estoque(dados.get("estoque"))
+    if estoque is None:
+        return _resposta(400, {"erro": "estoque tem que ser um inteiro maior ou igual a zero"})
+
+    try:
+        resultado = tabela.update_item(
+            Key={"id": produto_id},
+            UpdateExpression="SET #estoque = :estoque",
+            ConditionExpression="attribute_exists(#id)",
+            ExpressionAttributeNames={"#id": "id", "#estoque": "estoque"},
+            ExpressionAttributeValues={":estoque": estoque},
+            ReturnValues="ALL_NEW",
+        )
+    except tabela.meta.client.exceptions.ConditionalCheckFailedException:
+        return _resposta(404, {"erro": f"Produto {produto_id} não existe"})
+
+    item = resultado["Attributes"]
+    return _resposta(
+        200,
+        {
+            "id": _numero(item["id"]),
+            "nome": item["nome"],
+            "preco": _numero(item["preco"]),
+            "estoque": _numero(item["estoque"]),
+        },
+    )
 
 
 def lambda_handler(event, context):
@@ -72,9 +131,8 @@ def lambda_handler(event, context):
         if "admin" not in _grupos(event):
             return _resposta(403, {"erro": "Só o grupo admin inclui produto"})
 
-        bruto = event.get("body") or "{}"
         try:
-            dados = json.loads(bruto) if isinstance(bruto, str) else bruto
+            dados = _corpo(event)
         except json.JSONDecodeError:
             return _resposta(400, {"erro": "JSON inválido"})
 
@@ -87,10 +145,23 @@ def lambda_handler(event, context):
             return _resposta(400, {"erro": "Campo obrigatório: preco numérico"})
         if preco <= 0:
             return _resposta(400, {"erro": "preco tem que ser maior que zero"})
+        estoque = _estoque(dados.get("estoque", 0))
+        if estoque is None:
+            return _resposta(400, {"erro": "estoque tem que ser um inteiro maior ou igual a zero"})
 
         produtos = _listar()
         novo_id = max((item["id"] for item in produtos), default=0) + 1
-        tabela.put_item(Item={"id": novo_id, "nome": nome, "preco": preco})
-        return _resposta(201, {"id": novo_id, "nome": nome, "preco": _numero(preco)})
+        tabela.put_item(
+            Item={"id": novo_id, "nome": nome, "preco": preco, "estoque": estoque}
+        )
+        return _resposta(
+            201,
+            {"id": novo_id, "nome": nome, "preco": _numero(preco), "estoque": estoque},
+        )
+
+    if metodo == "PUT":
+        if "admin" not in _grupos(event):
+            return _resposta(403, {"erro": "Só o grupo admin ajusta estoque"})
+        return _atualizar_estoque(event)
 
     return _resposta(405, {"erro": f"Método {metodo} não permitido em /produtos"})

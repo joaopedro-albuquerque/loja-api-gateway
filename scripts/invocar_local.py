@@ -8,7 +8,9 @@ Exemplos:
   python3 scripts/invocar_local.py produtos
   python3 scripts/invocar_local.py carrinho --sub usuario-local
   python3 scripts/invocar_local.py produtos --metodo POST --grupo admin \\
-      --body '{"nome":"Caneta","preco":2.5}'
+      --body '{"nome":"Caneta","preco":2.5,"estoque":10}'
+  python3 scripts/invocar_local.py produtos --metodo PUT --grupo admin \\
+      --body '{"id":1,"estoque":25}'
 """
 
 import argparse
@@ -45,6 +47,8 @@ def garantir_regiao():
 def carregar(nome):
     chave, tabela = TABELAS[nome]
     os.environ[chave] = tabela
+    # O carrinho também lê o catálogo para conferir o estoque.
+    os.environ.setdefault(*TABELAS["produtos"])
     origem = ROOT / "lambdas" / nome / "lambda_function.py"
     spec = importlib.util.spec_from_file_location(f"lambda_{nome}", origem)
     if spec is None or spec.loader is None:
@@ -86,7 +90,7 @@ def main():
     parser.add_argument(
         "--metodo",
         default="GET",
-        choices=("GET", "POST", "DELETE"),
+        choices=("GET", "POST", "PUT", "DELETE"),
         help="Método HTTP do evento (padrão: GET).",
     )
     parser.add_argument(
@@ -108,8 +112,8 @@ def main():
     if args.funcao == "carrinho" and not sub:
         sub = "usuario-local"
 
-    if metodo == "POST" and not args.body:
-        parser.error("POST precisa de --body com o JSON")
+    if metodo in ("POST", "PUT") and not args.body:
+        parser.error(f"{metodo} precisa de --body com o JSON")
 
     garantir_regiao()
     handler = carregar(args.funcao)
